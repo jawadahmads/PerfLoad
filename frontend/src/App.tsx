@@ -20,6 +20,7 @@ function App() {
     return () => {
       socket.off("info");
       socket.off("message");
+      setSystemInfo(null);
     };
   }, []);
 
