@@ -26,6 +26,20 @@ function formatSeconds(sec) {
   return `${days}d ${hrs}h ${mins}m ${s}s`;
 }
 
+// Get the first non-internal MAC address (or 'unknown' if none)
+function getMacAddress() {
+  const nets = os.networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      // skip internal and invalid MACs
+      if (!net.internal && net.mac && net.mac !== "00:00:00:00:00:00") {
+        return net.mac;
+      }
+    }
+  }
+  return "unknown";
+}
+
 // sample CPU usage over a short interval and compute percent used
 function sampleCpuUsage(delayMs = 100) {
   const snapshot = os.cpus();
@@ -77,6 +91,9 @@ async function getSystemStats() {
   // measure CPU used percentage over 100ms
   const cpuUsedPercent = await sampleCpuUsage(100);
 
+  // get MAC address
+  const macAddress = getMacAddress();
+
   return {
     osType: os.type(), // e.g. 'Linux'
     platform: os.platform(), // e.g. 'linux'
@@ -103,8 +120,9 @@ async function getSystemStats() {
         "5m": +loadAvg[1].toFixed(2),
         "15m": +loadAvg[2].toFixed(2),
       },
-      usedPercent: cpuUsedPercent, // newly added
+      usedPercent: cpuUsedPercent,
     },
+    macAddress, // added MAC address here
     timestamp: new Date().toISOString(),
   };
 }
@@ -115,9 +133,31 @@ module.exports = { getSystemStats };
 // Print once, and optionally every N seconds if run directly
 if (require.main === module) {
   (async () => {
-    console.log(JSON.stringify(await getSystemStats(), null, 2));
-
+    // console.log(JSON.stringify(await getSystemStats(), null, 2));
     // Uncomment to print repeatedly every 5 seconds:
-    // setInterval(async () => console.log(JSON.stringify(await getSystemStats(), null, 2)), 5000);
+    // setInterval(
+    //   async () => console.log(JSON.stringify(await getSystemStats(), null, 2)),
+    //   5000
+    // );
   })();
 }
+
+// -----------------------------Connection to the socket.io server-------------------------
+
+const io = require("socket.io-client");
+const socket = io("http://localhost:3001");
+
+socket.on("connect", () => {
+  console.log("Connected to socket server:", socket.id);
+});
+
+// emit every second
+setInterval(async () => socket.emit("info", await getSystemStats()), 1000);
+
+socket.on("message", (data) => {
+  console.log("Message from server:", data);
+});
+
+socket.on("disconnect", () => {
+  console.log("Disconnected from socket server:", socket.id);
+});
